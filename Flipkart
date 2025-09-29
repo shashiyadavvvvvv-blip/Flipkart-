@@ -86,7 +86,7 @@ return ( <div className="p-4 max-w-6xl mx-auto"> <h1 className="text-3xl font-bo
       <div className="mt-4">
         <h3 className="font-semibold">Checkout (PayPal)</h3>
         <p className="text-sm mb-2">Total: ${fmt(total)}</p>
-        {PAYPAL_CLIENT_ID === "REPLACE_WITH_YOUR_PAYPAL_CLIENT_ID" ? (
+        {PAYPAL_CLIENT_ID === " Acrbg7p4034Ar9tele21
           <div className="p-2 bg-yellow-100 rounded">Please set PAYPAL_CLIENT_ID in the code to enable live PayPal buttons.</div>
         ) : (
           <div ref={paypalRef} />
