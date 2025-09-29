@@ -1,0 +1,154 @@
+/* Marketplace React single-file app
+
+Filename (suggested): MarketplaceApp.jsx
+
+How to use:
+
+1. Create a new React app (Vite or CRA). Put this file under src/ and import it in App.jsx.
+
+
+2. Add Tailwind CSS to your project (optional but styles use Tailwind).
+
+
+3. Replace PAYPAL_CLIENT_ID placeholder below with your PayPal client ID for production or sandbox.
+
+
+4. Build & deploy to GitHub Pages / Netlify / Vercel.
+
+
+
+
+Features included:
+
+Add / edit / remove products with name, price, image (URL or local file -> base64), stock
+
+Per-product discount code (single code per product) which applies % discount
+
+Cart with quantity controls
+
+Checkout with PayPal JS SDK (client-side createOrder). You must replace client id.
+
+Data persisted in localStorage so 'permanent' for this browser
+
+Simple UI built with Tailwind classes (no external components)
+
+
+Limitations:
+
+This is a front-end only demo. For production, use a backend to securely create PayPal orders, validate discount codes, and store images/files.
+
+PayPal client-side integration is OK for demo; move order verification to server for real money. */
+
+
+import React, { useEffect, useState, useRef } from "react";
+
+// --- CONFIG: Replace with your PayPal client id --- const PAYPAL_CLIENT_ID = "REPLACE_WITH_YOUR_PAYPAL_CLIENT_ID"; // For sandbox use: "sb" can work for quick tests but better to use sandbox client id. const PAYPAL_SDK_SRC = https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD;
+
+// Local Storage keys const LS_PRODUCTS = "marketplace_products_v1"; const LS_CART = "marketplace_cart_v1";
+
+// Helpful util: format number const fmt = (n) => Number(n).toFixed(2);
+
+export default function MarketplaceApp() { const [products, setProducts] = useState(() => { try { const raw = localStorage.getItem(LS_PRODUCTS); return raw ? JSON.parse(raw) : sampleProducts(); } catch (e) { return sampleProducts(); } });
+
+const [cart, setCart] = useState(() => { try { const raw = localStorage.getItem(LS_CART); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; } });
+
+const [editing, setEditing] = useState(null); // product being edited const [imagePreview, setImagePreview] = useState(null); const [paypalLoaded, setPaypalLoaded] = useState(false); const paypalRef = useRef(); const [checkoutTotal, setCheckoutTotal] = useState(0);
+
+useEffect(() => { localStorage.setItem(LS_PRODUCTS, JSON.stringify(products)); }, [products]);
+
+useEffect(() => { localStorage.setItem(LS_CART, JSON.stringify(cart)); }, [cart]);
+
+useEffect(() => { // load PayPal script lazily if (!PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID === "REPLACE_WITH_YOUR_PAYPAL_CLIENT_ID") return; if (document.querySelector(script[src^="https://www.paypal.com/sdk/js"])) { setPaypalLoaded(true); return; } const s = document.createElement("script"); s.src = PAYPAL_SDK_SRC; s.async = true; s.onload = () => setPaypalLoaded(true); s.onerror = () => console.warn("PayPal SDK failed to load"); document.body.appendChild(s); }, []);
+
+useEffect(() => { // when PayPal loaded and we have a total, render buttons if (!paypalLoaded) return; if (!paypalRef.current) return; // clear container paypalRef.current.innerHTML = ""; window.paypal.Buttons({ createOrder: (data, actions) => { const total = calculateCartTotal(cart, products); return actions.order.create({ purchase_units: [ { amount: { value: fmt(total), }, }, ], }); }, onApprove: async (data, actions) => { const order = await actions.order.capture(); console.log("Order captured:", order); alert("Payment successful! Order ID: " + order.id); // simple post-payment cleanup: clear cart setCart({}); }, onError: (err) => { console.error(err); alert("PayPal error: " + err.message); }, }).render(paypalRef.current); }, [paypalLoaded, cart, products]);
+
+const addOrUpdateProduct = (p) => { if (p.id) { setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x))); } else { p.id = Date.now().toString(); setProducts((prev) => [p, ...prev]); } setEditing(null); setImagePreview(null); };
+
+const removeProduct = (id) => { if (!confirm("Product delete karna hai?")) return; setProducts((prev) => prev.filter((p) => p.id !== id)); };
+
+const addToCart = (productId, qty = 1, discountCodeInput = "") => { const product = products.find((p) => p.id === productId); if (!product) return; const existing = cart[productId] || { qty: 0, code: "" }; const codeToStore = discountCodeInput ? discountCodeInput.trim() : existing.code; setCart((prev) => ({ ...prev, [productId]: { qty: existing.qty + qty, code: codeToStore }, })); };
+
+const updateCartQty = (productId, qty) => { if (qty <= 0) { const copy = { ...cart }; delete copy[productId]; setCart(copy); return; } setCart((prev) => ({ ...prev, [productId]: { ...prev[productId], qty } })); };
+
+const calculateCartTotal = (cartObj, productsList) => { let total = 0; for (const pid of Object.keys(cartObj)) { const item = cartObj[pid]; const product = productsList.find((p) => p.id === pid); if (!product) continue; let price = Number(product.price) || 0; // apply discount if code matches if (item.code && product.discountCode && item.code === product.discountCode.code) { const d = Number(product.discountCode.percent) || 0; price = price * (1 - d / 100); } total += price * item.qty; } return total; };
+
+const total = calculateCartTotal(cart, products);
+
+return ( <div className="p-4 max-w-6xl mx-auto"> <h1 className="text-3xl font-bold mb-4">NewStyle Marketplace (Demo)</h1> <div className="grid md:grid-cols-3 gap-6"> <div className="md:col-span-2"> <ProductList products={products} onEdit={(p) => setEditing(p)} onDelete={removeProduct} onAddToCart={addToCart} /> </div> <div> <div className="mb-4"> <h2 className="text-xl font-semibold">Add / Edit Product</h2> <ProductForm initial={editing} onCancel={() => { setEditing(null); setImagePreview(null); }} onSave={(p) => addOrUpdateProduct(p)} onImagePreview={(data) => setImagePreview(data)} imagePreview={imagePreview} /> </div>
+
+<Cart
+        cart={cart}
+        products={products}
+        updateQty={updateCartQty}
+        total={total}
+      />
+
+      <div className="mt-4">
+        <h3 className="font-semibold">Checkout (PayPal)</h3>
+        <p className="text-sm mb-2">Total: ${fmt(total)}</p>
+        {PAYPAL_CLIENT_ID === "REPLACE_WITH_YOUR_PAYPAL_CLIENT_ID" ? (
+          <div className="p-2 bg-yellow-100 rounded">Please set PAYPAL_CLIENT_ID in the code to enable live PayPal buttons.</div>
+        ) : (
+          <div ref={paypalRef} />
+        )}
+        <div className="text-xs mt-2">Note: This demo uses PayPal client-side integration. For production, validate payment on server.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+); }
+
+function sampleProducts() { return [ { id: "p1", name: "Demo Phone X", price: 199.99, image: "https://via.placeholder.com/300x200?text=Phone+X", stock: 10, discountCode: { code: "SAVE10", percent: 10 }, description: "Stylish demo phone", }, { id: "p2", name: "Demo Headphones", price: 49.99, image: "https://via.placeholder.com/300x200?text=Headphones", stock: 20, discountCode: { code: "HEAD5", percent: 5 }, description: "Comfortable headphones", }, ]; }
+
+function ProductList({ products, onEdit, onDelete, onAddToCart }) { const [codeInputs, setCodeInputs] = useState({}); return ( <div> <h2 className="text-2xl font-semibold mb-3">Products</h2> <div className="grid sm:grid-cols-2 gap-4"> {products.map((p) => ( <div key={p.id} className="border rounded p-3 shadow-sm"> <img src={p.image} alt={p.name} className="w-full h-40 object-cover mb-2 rounded" /> <div className="flex justify-between items-start"> <div> <h3 className="font-semibold">{p.name}</h3> <p className="text-sm">{p.description}</p> <p className="mt-1">Price: ${fmt(p.price)}</p> {p.discountCode ? ( <p className="text-green-600 text-sm">Discount: {p.discountCode.code} - {p.discountCode.percent}%</p> ) : null} </div> <div className="text-right"> <button className="text-sm mr-2" onClick={() => onEdit(p)}>Edit</button> <button className="text-sm text-red-600" onClick={() => onDelete(p.id)}>Delete</button> </div> </div> <div className="mt-3 flex gap-2"> <input placeholder="Discount code (optional)" value={codeInputs[p.id] || ""} onChange={(e) => setCodeInputs((s) => ({ ...s, [p.id]: e.target.value }))} className="border p-1 text-sm flex-1" /> <button className="bg-blue-600 text-white px-3 rounded" onClick={() => onAddToCart(p.id, 1, codeInputs[p.id] || "")}>Add to cart</button> </div> </div> ))} </div> </div> ); }
+
+function ProductForm({ initial, onSave, onCancel, onImagePreview, imagePreview }) { const [name, setName] = useState(initial ? initial.name : ""); const [price, setPrice] = useState(initial ? initial.price : ""); const [image, setImage] = useState(initial ? initial.image : ""); const [stock, setStock] = useState(initial ? initial.stock : 0); const [description, setDescription] = useState(initial ? initial.description : ""); const [discountCode, setDiscountCode] = useState(initial && initial.discountCode ? initial.discountCode.code : ""); const [discountPercent, setDiscountPercent] = useState(initial && initial.discountCode ? initial.discountCode.percent : 0);
+
+useEffect(() => { if (initial) { setName(initial.name); setPrice(initial.price); setImage(initial.image); setStock(initial.stock); setDescription(initial.description); setDiscountCode(initial.discountCode ? initial.discountCode.code : ""); setDiscountPercent(initial.discountCode ? initial.discountCode.percent : 0); } else { setName(""); setPrice(""); setImage(""); setStock(0); setDescription(""); setDiscountCode(""); setDiscountPercent(0); } }, [initial]);
+
+const handleFile = (file) => { if (!file) return; const reader = new FileReader(); reader.onload = () => { setImage(reader.result); onImagePreview && onImagePreview(reader.result); }; reader.readAsDataURL(file); };
+
+const submit = (e) => { e && e.preventDefault(); if (!name || !price) return alert("Name and price required"); const out = { id: initial ? initial.id : undefined, name, price: Number(price), image, stock: Number(stock), description, discountCode: discountCode ? { code: discountCode.trim(), percent: Number(discountPercent) } : null, }; onSave(out); };
+
+return ( <form onSubmit={submit} className="border p-3 rounded"> <label className="block text-sm">Name</label> <input value={name} onChange={(e) => setName(e.target.value)} className="w-full border p-1 mb-2" />
+
+<label className="block text-sm">Price (USD)</label>
+  <input value={price} onChange={(e) => setPrice(e.target.value)} className="w-full border p-1 mb-2" />
+
+  <label className="block text-sm">Image URL</label>
+  <input value={image} onChange={(e) => setImage(e.target.value)} className="w-full border p-1 mb-2" />
+
+  <label className="block text-sm">Or upload image</label>
+  <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files[0])} className="w-full mb-2" />
+
+  {imagePreview || image ? (
+    <img src={imagePreview || image} alt="preview" className="w-full h-32 object-cover mb-2 rounded" />
+  ) : null}
+
+  <label className="block text-sm">Stock</label>
+  <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="w-full border p-1 mb-2" />
+
+  <label className="block text-sm">Description</label>
+  <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full border p-1 mb-2" />
+
+  <label className="block text-sm">Discount Code (optional)</label>
+  <div className="flex gap-2 mb-2">
+    <input value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} placeholder="CODE" className="border p-1 flex-1" />
+    <input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} placeholder="%" className="border p-1 w-24" />
+  </div>
+
+  <div className="flex gap-2">
+    <button type="submit" className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
+    <button type="button" onClick={onCancel} className="px-3 py-1 border rounded">Cancel</button>
+  </div>
+</form>
+
+); }
+
+function Cart({ cart, products, updateQty, total }) { const items = Object.keys(cart).map((pid) => { const p = products.find((x) => x.id === pid); return { pid, p, qty: cart[pid].qty, code: cart[pid].code }; }).filter(Boolean);
+
+return ( <div className="border rounded p-3"> <h3 className="font-semibold">Cart</h3> {items.length === 0 ? ( <p className="text-sm">Cart is empty</p> ) : ( <div> {items.map((it) => ( <div key={it.pid} className="flex items-center gap-3 border-b py-2"> <img src={it.p.image} alt="" className="w-16 h-12 object-cover rounded" /> <div className="flex-1"> <div className="font-semibold">{it.p.name}</div> <div className="text-sm">Code: {it.code || "-"}</div> <div className="text-sm">Unit: ${fmt(unitPriceAfterCode(it.p, it.code))}</div> </div> <div className="flex items-center gap-2"> <button onClick={() => updateQty(it.pid, it.qty - 1)} className="px-2">-</button> <div>{it.qty}</div> <button onClick={() => updateQty(it.pid, it.qty + 1)} className="px-2">+</button> </div> </div> ))} <div className="text-right mt-2">Total: ${fmt(total)}</div> </div> )} </div> ); }
+
+function unitPriceAfterCode(product, code) { let price = Number(product.price) || 0; if (product.discountCode && code && product.discountCode.code === code) { price = price * (1 - Number(product.discountCode.percent) / 100); } return price; }
+
